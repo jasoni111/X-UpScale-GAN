@@ -1,0 +1,5 @@
+logs/
+checkpoints/
+.vscode/
+__pycache__/
+config.py
