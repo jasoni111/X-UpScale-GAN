@@ -64,10 +64,10 @@ def run_tensorflow():
     D = Discriminator()
 
     gan_optim = mixed_precision.LossScaleOptimizer(
-        tf.keras.optimizers.Adam(5e-5, beta_1=0.5), loss_scale="dynamic"
+        tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
     )
     dis_optim = mixed_precision.LossScaleOptimizer(
-        tf.keras.optimizers.Adam(5e-5, beta_1=0.5), loss_scale="dynamic"
+        tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
     )
 
     ckpt = tf.train.Checkpoint(
@@ -121,6 +121,7 @@ def run_tensorflow():
                     labels=tf.ones_like(c_dann_human), logits=c_dann_human
                 )
             )
+            loss_domain_adversarial = loss_domain_adversarial * 0.2
             tf.print(loss_domain_adversarial)
 
             loss_semantic_consistency = identity_loss(

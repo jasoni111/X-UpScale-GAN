@@ -98,12 +98,13 @@ class decoder_seperate_layers(tf.keras.layers.Layer):
         self.layers.append(  tf.keras.layers.Conv2DTranspose(256,kernel_size=(4,4),strides=(2,2), padding='same', kernel_initializer=init))
         self.layers.append(  tf.keras.layers.LeakyReLU(alpha=0.2) )
         # 16 16 256
-        self.layers.append(  SubpixelConv2D(input_shape,2) )
+        self.layers.append(   lambda x:tf.nn.depth_to_space(x, 2) )
+        # tf.nn.depth_to_space(x, scale)
         # 32 32 64
         self.layers.append(  tf.keras.layers.Conv2D(256, (3,3), padding='same', kernel_initializer=init) )
         self.layers.append(  tf.keras.layers.LeakyReLU(alpha=0.2) )
         # 32 32 256
-        self.layers.append(  SubpixelConv2D(input_shape,2) )
+        self.layers.append(  lambda x:tf.nn.depth_to_space(x, 2) )
         self.layers.append(  tf.keras.layers.Conv2D(256, (3,3), padding='same', kernel_initializer=init) )
         self.layers.append(  tf.keras.layers.LeakyReLU(alpha=0.2) )
 
