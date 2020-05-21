@@ -5,14 +5,17 @@ import numpy as np
 # import PIL
 from data import getAnimeCleanData, getCelebaData
 from loss import (
-    generator_loss,
-    discriminator_loss,
+    w_d_loss,
+    w_g_loss,
+    gradient_penalty,
+    # generator_loss,
+    # discriminator_loss,
     cycle_loss,
     identity_loss,
     mse_loss,
     gradient_penalty_star,
 )
-from discriminator import StarDiscriminator, Discriminator
+from discriminator import StarDiscriminator, W_Discriminator
 from functools import partial
 from c_dann import C_dann
 from encoder import *
@@ -48,20 +51,20 @@ def run_tensorflow():
     AnimeCleanData = getAnimeCleanData(BATCH_SIZE=batch_size)
     CelebaData = getCelebaData(BATCH_SIZE=batch_size)
 
-    logdir = "./logs/X-VAE-Gan/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    logdir = "./logs/XWGan/" + datetime.now().strftime("%Y%m%d-%H%M%S")
     file_writer = tf.summary.create_file_writer(logdir)
 
-    checkpoint_path = "./checkpoints/X-VAE-Gan"
+    checkpoint_path = "./checkpoints/XWGan"
 
     encode_anime = encoder_seperate_layers()
     encode_human = encoder_seperate_layers()
-    encode_share = VAE_encoder_shared_layers()
+    encode_share = encoder_shared_layers()
 
     decode_share = decoder_shared_layers()
     decode_human = decoder_seperate_layers()
     decode_anime = decoder_seperate_layers()
     c_dann = C_dann()
-    D = Discriminator()
+    D = W_Discriminator()
 
     optims = [
         mixed_precision.LossScaleOptimizer(
@@ -69,9 +72,6 @@ def run_tensorflow():
         )
         for _ in range(8)
     ]
-    # optims[-1] = mixed_precision.LossScaleOptimizer(
-    #         tf.keras.optimizers.Adam(1e-3,beta), loss_scale="dynamic"
-    #     )
     # gan_optim = mixed_precision.LossScaleOptimizer(
     #     tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
     # )
@@ -99,17 +99,17 @@ def run_tensorflow():
     @tf.function
     def trainstep(real_human, real_anime, big_anime):
         with tf.GradientTape(persistent=True) as tape:
-            a_mean, a_log_var, latent_anime = encode_share(encode_anime(real_anime))
-            h_mean, h_log_var, latent_human = encode_share(encode_human(real_human))
+            latent_anime = encode_share(encode_anime(real_anime))
+            latent_human = encode_share(encode_human(real_human))
 
             recon_anime = decode_anime(decode_share(latent_anime))
             recon_human = decode_human(decode_share(latent_human))
 
             fake_anime = decode_anime(decode_share(latent_human))
-            _, _, latent_human_cycled = encode_share(encode_anime(fake_anime))
+            latent_human_cycled = encode_share(encode_anime(fake_anime))
 
             fake_human = decode_anime(decode_share(latent_anime))
-            _, _, latent_anime_cycled = encode_share(encode_anime(fake_human))
+            latent_anime_cycled = encode_share(encode_anime(fake_human))
 
             def kl_loss(mean, log_var):
                 loss = 1 + log_var - tf.math.square(mean) + tf.math.exp(log_var)
@@ -122,14 +122,9 @@ def run_tensorflow():
             c_dann_anime = c_dann(latent_anime)
             c_dann_human = c_dann(latent_human)
 
-            loss_anime_encode = mse_loss(real_anime, recon_anime) * 3
-            loss_human_encode = mse_loss(real_human, recon_human) * 3
+            loss_anime_encode = identity_loss(real_anime, recon_anime) * 3
+            loss_human_encode = identity_loss(real_human, recon_human) * 3
 
-            anime_kl_loss = kl_loss(a_mean, a_log_var)
-            human_kl_loss = kl_loss(h_mean, h_log_var)
-
-            tf.debugging.assert_less(anime_kl_loss, 0.)
-            tf.debugging.assert_less(human_kl_loss, 0.)
 
             loss_domain_adversarial = tf.reduce_mean(
                 tf.nn.sigmoid_cross_entropy_with_logits(
@@ -149,29 +144,25 @@ def run_tensorflow():
                 + identity_loss(latent_human, latent_human_cycled) * 3
             )
 
-            loss_gan = mse_loss(tf.zeros_like(disc_fake), disc_fake) * 8
+            loss_gan = w_g_loss(disc_fake)
 
             anime_encode_total_loss = (
                 loss_anime_encode
-                + anime_kl_loss
                 + loss_domain_adversarial
                 + loss_semantic_consistency
                 + loss_gan
             )
             human_encode_total_loss = (
                 loss_human_encode
-                + human_kl_loss
                 + loss_domain_adversarial
                 + loss_semantic_consistency
             )
             share_encode_total_loss = (
                 loss_anime_encode
-                + anime_kl_loss
                 + loss_domain_adversarial
                 + loss_semantic_consistency
                 + loss_gan
                 + loss_human_encode
-                + human_kl_loss
             )
 
             share_decode_total_loss = loss_anime_encode + loss_human_encode + loss_gan
@@ -179,10 +170,12 @@ def run_tensorflow():
             human_decode_total_loss = loss_human_encode
 
 
-            loss_disc = (
-                mse_loss(tf.ones_like(disc_fake), disc_fake)
-                + mse_loss(tf.zeros_like(disc_real), disc_real)
-            ) * 10
+            # loss_disc = (
+            #     mse_loss(tf.ones_like(disc_fake), disc_fake)
+            #     + mse_loss(tf.zeros_like(disc_real), disc_real)
+            # ) * 10
+            loss_disc = w_d_loss(disc_real,disc_fake)
+            loss_disc += gradient_penalty(partial(D,training=True),real_anime,fake_anime)
 
             losses = [anime_encode_total_loss,human_encode_total_loss,share_encode_total_loss,loss_domain_adversarial,share_decode_total_loss,
             anime_decode_total_loss,human_decode_total_loss,loss_disc]
@@ -221,8 +214,6 @@ def run_tensorflow():
             loss_semantic_consistency,
             loss_gan,
             loss_disc,
-            disc_fake,
-            disc_real
         )
 
     def process_data_for_display(input_image):
@@ -241,8 +232,6 @@ def run_tensorflow():
         "loss_semantic_consistency",
         "loss_gan",
         "loss_disc",
-        "disc_fake",
-        "disc_real"
     ]
 
     counter = 0

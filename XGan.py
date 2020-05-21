@@ -48,10 +48,10 @@ def run_tensorflow():
     AnimeCleanData = getAnimeCleanData(BATCH_SIZE=batch_size)
     CelebaData = getCelebaData(BATCH_SIZE=batch_size)
 
-    logdir = "./logs/XGan/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    logdir = "./logs/X-VAE-Gan/" + datetime.now().strftime("%Y%m%d-%H%M%S")
     file_writer = tf.summary.create_file_writer(logdir)
 
-    checkpoint_path = "./checkpoints/XGan"
+    checkpoint_path = "./checkpoints/X-VAE-Gan"
 
     encode_anime = encoder_seperate_layers()
     encode_human = encoder_seperate_layers()
@@ -63,12 +63,18 @@ def run_tensorflow():
     c_dann = C_dann()
     D = Discriminator()
 
-    gan_optim = mixed_precision.LossScaleOptimizer(
-        tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
-    )
-    dis_optim = mixed_precision.LossScaleOptimizer(
-        tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
-    )
+    optims = [
+        mixed_precision.LossScaleOptimizer(
+            tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
+        )
+        for _ in range(8)
+    ]
+    # gan_optim = mixed_precision.LossScaleOptimizer(
+    #     tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
+    # )
+    # dis_optim = mixed_precision.LossScaleOptimizer(
+    #     tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
+    # )
 
     ckpt = tf.train.Checkpoint(
         encode_anime=encode_anime,
@@ -102,6 +108,11 @@ def run_tensorflow():
             fake_human = decode_anime(decode_share(latent_anime))
             latent_anime_cycled = encode_share(encode_anime(fake_human))
 
+            def kl_loss(mean, log_var):
+                loss = 1 + log_var - tf.math.square(mean) + tf.math.exp(log_var)
+                loss = tf.reduce_sum(loss, axis=-1) * -0.5
+                return loss
+
             disc_fake = D(fake_anime)
             disc_real = D(real_anime)
 
@@ -131,35 +142,58 @@ def run_tensorflow():
 
             loss_gan = mse_loss(tf.zeros_like(disc_fake), disc_fake)*5
 
-            loss_total_gan = (
+            anime_encode_total_loss = (
                 loss_anime_encode
-                + loss_human_encode
                 + loss_domain_adversarial
                 + loss_semantic_consistency
                 + loss_gan
             )
-            scaled_loss_total_gan = gan_optim.get_scaled_loss(loss_total_gan)
-            loss_disc = (mse_loss(tf.ones_like(disc_fake), disc_fake)+mse_loss(tf.zeros_like(disc_real), disc_real))*10
-            # discriminator_loss(disc_real, disc_fake)
-            scaled_loss_disc = dis_optim.get_scaled_loss(loss_disc)
-            # get loss for each component
+            human_encode_total_loss = (
+                loss_human_encode
+                + loss_domain_adversarial
+                + loss_semantic_consistency
+            )
+            share_encode_total_loss = (
+                loss_anime_encode
+                + loss_domain_adversarial
+                + loss_semantic_consistency
+                + loss_gan
+                + loss_human_encode
+            )
+
+            share_decode_total_loss = loss_anime_encode + loss_human_encode + loss_gan
+            anime_decode_total_loss = loss_anime_encode + loss_gan
+            human_decode_total_loss = loss_human_encode
+
+
+            loss_disc = (
+                mse_loss(tf.ones_like(disc_fake), disc_fake)
+                + mse_loss(tf.zeros_like(disc_real), disc_real)
+            ) * 10
+
+            losses = [anime_encode_total_loss,human_encode_total_loss,share_encode_total_loss,loss_domain_adversarial,share_decode_total_loss,
+            anime_decode_total_loss,human_decode_total_loss,loss_disc]
+
+            scaled_losses = [optim.get_scaled_loss(loss) for optim,loss in zip(optims,losses)]
+
         list_variables = [
             encode_anime.trainable_variables,
             encode_human.trainable_variables,
             encode_share.trainable_variables,
-            decode_share.trainable_variables,
-            decode_human.trainable_variables,
-            decode_anime.trainable_variables,
             c_dann.trainable_variables,
+            decode_share.trainable_variables,
+            decode_anime.trainable_variables,
+            decode_human.trainable_variables,
+            D.trainable_variables
         ]
-        gan_grad = tape.gradient(scaled_loss_total_gan, list_variables)
-        gan_grad = [gan_optim.get_unscaled_gradients(x) for x in gan_grad]
-        for grad, trainable in zip(gan_grad, list_variables):
-            gan_optim.apply_gradients(zip(grad, trainable))
-        dis_grad = dis_optim.get_unscaled_gradients(
-            tape.gradient(scaled_loss_disc, D.trainable_variables)
-        )
-        dis_optim.apply_gradients(zip(dis_grad, D.trainable_variables))
+        gan_grad = [tape.gradient(scaled_loss, train_variable) for scaled_loss, train_variable in zip(scaled_losses,list_variables)  ]
+        gan_grad = [optim.get_unscaled_gradients(x) for optim,x in zip(optims,gan_grad)]
+        for optim, grad, trainable in zip(optims,gan_grad, list_variables):
+            optim.apply_gradients(zip(grad, trainable))
+        # dis_grad = dis_optim.get_unscaled_gradients(
+        #     tape.gradient(scaled_loss_disc, D.trainable_variables)
+        # )
+        # dis_optim.apply_gradients(zip(dis_grad, D.trainable_variables))
 
         return (
             real_human,
@@ -168,7 +202,6 @@ def run_tensorflow():
             recon_human,
             fake_anime,
             fake_human,
-
             loss_anime_encode,
             loss_human_encode,
             loss_domain_adversarial,
@@ -187,7 +220,6 @@ def run_tensorflow():
         "recon_human",
         "fake_anime",
         "fake_human",
-
         "loss_anime_encode",
         "loss_human_encode",
         "loss_domain_adversarial",
@@ -210,7 +242,7 @@ def run_tensorflow():
 
             with file_writer.as_default():
                 for j in range(len(result)):
-                    
+
                     if j < 6:
                         tf.summary.image(
                             print_string[j],
