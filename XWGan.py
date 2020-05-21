@@ -214,6 +214,8 @@ def run_tensorflow():
             loss_semantic_consistency,
             loss_gan,
             loss_disc,
+            disc_fake,
+            disc_real
         )
 
     def process_data_for_display(input_image):
@@ -232,6 +234,8 @@ def run_tensorflow():
         "loss_semantic_consistency",
         "loss_gan",
         "loss_disc",
+        "disc_fake",
+        "disc_real"
     ]
 
     counter = 0
