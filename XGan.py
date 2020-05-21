@@ -20,7 +20,7 @@ from encoder import *
 # , UpScaleDiscriminator
 from datetime import datetime
 
-batch_size = 32
+batch_size = 16
 
 
 def run_tensorflow():
@@ -108,8 +108,8 @@ def run_tensorflow():
             c_dann_anime = c_dann(latent_anime)
             c_dann_human = c_dann(latent_human)
 
-            loss_anime_encode = mse_loss(real_anime, recon_anime)*3
-            loss_human_encode = mse_loss(real_human, recon_human)*3
+            loss_anime_encode = mse_loss(real_anime, recon_anime)*4
+            loss_human_encode = mse_loss(real_human, recon_human)*4
 
 
             loss_domain_adversarial = tf.reduce_mean(
@@ -127,9 +127,9 @@ def run_tensorflow():
 
             loss_semantic_consistency = identity_loss(
                 latent_anime, latent_anime_cycled
-            ) *3+ identity_loss(latent_human, latent_human_cycled)*3
+            )*2 + identity_loss(latent_human, latent_human_cycled)*2
 
-            loss_gan = mse_loss(tf.zeros_like(disc_fake), disc_fake)*8
+            loss_gan = mse_loss(tf.zeros_like(disc_fake), disc_fake)*5
 
             loss_total_gan = (
                 loss_anime_encode

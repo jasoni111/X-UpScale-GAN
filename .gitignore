@@ -3,3 +3,4 @@ checkpoints/
 .vscode/
 __pycache__/
 config.py
+source_conda.rc

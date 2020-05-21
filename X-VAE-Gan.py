@@ -65,10 +65,13 @@ def run_tensorflow():
 
     optims = [
         mixed_precision.LossScaleOptimizer(
-            tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
+            tf.keras.optimizers.Adam(1e-3), loss_scale="dynamic"
         )
         for _ in range(8)
     ]
+    # optims[-1] = mixed_precision.LossScaleOptimizer(
+    #         tf.keras.optimizers.Adam(1e-3,beta), loss_scale="dynamic"
+    #     )
     # gan_optim = mixed_precision.LossScaleOptimizer(
     #     tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
     # )
