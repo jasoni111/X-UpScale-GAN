@@ -5,14 +5,17 @@ import numpy as np
 # import PIL
 from data import getAnimeCleanData, getCelebaData
 from loss import (
-    generator_loss,
-    discriminator_loss,
+    w_d_loss,
+    w_g_loss,
+    gradient_penalty,
+    # generator_loss,
+    # discriminator_loss,
     cycle_loss,
     identity_loss,
     mse_loss,
     gradient_penalty_star,
 )
-from discriminator import StarDiscriminator, Discriminator
+from discriminator import StarDiscriminator, W_Discriminator
 from functools import partial
 from c_dann import C_dann
 from encoder import *
@@ -48,10 +51,10 @@ def run_tensorflow():
     AnimeCleanData = getAnimeCleanData(BATCH_SIZE=batch_size)
     CelebaData = getCelebaData(BATCH_SIZE=batch_size)
 
-    logdir = "./logs/X-VAE-Gan/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    logdir = "./logs/XWGan/" + datetime.now().strftime("%Y%m%d-%H%M%S")
     file_writer = tf.summary.create_file_writer(logdir)
 
-    checkpoint_path = "./checkpoints/X-VAE-Gan"
+    checkpoint_path = "./checkpoints/XWGan"
 
     encode_anime = encoder_seperate_layers()
     encode_human = encoder_seperate_layers()
@@ -61,11 +64,11 @@ def run_tensorflow():
     decode_human = decoder_seperate_layers()
     decode_anime = decoder_seperate_layers()
     c_dann = C_dann()
-    D = Discriminator()
+    D = W_Discriminator()
 
     optims = [
         mixed_precision.LossScaleOptimizer(
-            tf.keras.optimizers.Adam(1e-4, beta_1=0.5), loss_scale="dynamic"
+            tf.keras.optimizers.Adam(1e-3), loss_scale="dynamic"
         )
         for _ in range(8)
     ]
@@ -119,8 +122,8 @@ def run_tensorflow():
             c_dann_anime = c_dann(latent_anime)
             c_dann_human = c_dann(latent_human)
 
-            loss_anime_encode = mse_loss(real_anime, recon_anime) * 3
-            loss_human_encode = mse_loss(real_human, recon_human) * 3
+            loss_anime_encode = identity_loss(real_anime, recon_anime) * 3
+            loss_human_encode = identity_loss(real_human, recon_human) * 3
 
 
             loss_domain_adversarial = tf.reduce_mean(
@@ -141,7 +144,7 @@ def run_tensorflow():
                 + identity_loss(latent_human, latent_human_cycled) * 3
             )
 
-            loss_gan = mse_loss(tf.zeros_like(disc_fake), disc_fake) * 8
+            loss_gan = w_g_loss(disc_fake)
 
             anime_encode_total_loss = (
                 loss_anime_encode
@@ -167,10 +170,12 @@ def run_tensorflow():
             human_decode_total_loss = loss_human_encode
 
 
-            loss_disc = (
-                mse_loss(tf.ones_like(disc_fake), disc_fake)
-                + mse_loss(tf.zeros_like(disc_real), disc_real)
-            ) * 10
+            # loss_disc = (
+            #     mse_loss(tf.ones_like(disc_fake), disc_fake)
+            #     + mse_loss(tf.zeros_like(disc_real), disc_real)
+            # ) * 10
+            loss_disc = w_d_loss(disc_real,disc_fake)
+            loss_disc += gradient_penalty(partial(D,training=True),real_anime,fake_anime)
 
             losses = [anime_encode_total_loss,human_encode_total_loss,share_encode_total_loss,loss_domain_adversarial,share_decode_total_loss,
             anime_decode_total_loss,human_decode_total_loss,loss_disc]

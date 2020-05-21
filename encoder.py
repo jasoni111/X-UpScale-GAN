@@ -54,18 +54,18 @@ class encoder_shared_layers(tf.keras.layers.Layer):
         self.layers.append(  tf.keras.layers.LeakyReLU(alpha=0.2) )
 
         # 1,1,1024       
-        self.layers.append(  tf.keras.layers.Conv2D(1024, (1,1), strides=(1,1), padding='valid', kernel_initializer=init) )
+        self.layers.append(  tf.keras.layers.Dense(1024, kernel_initializer=init) )
         self.layers.append(tf.keras.layers.Activation("linear" , dtype='float32') )
         # 1,1,1024  
 
 
     def call(self, inputs):
-        # print("~~~~~~~~shared")
+        print("~~~~~~~~shared")
         print(inputs.shape)
         for layer in self.layers:
             inputs = layer(inputs)
-            # print(inputs.shape)
-        # print("~~~~~~~~")
+            print(inputs.shape)
+        print("######share")
         return inputs
 
 class VAE_encoder_shared_layers(tf.keras.layers.Layer):
@@ -90,8 +90,8 @@ class VAE_encoder_shared_layers(tf.keras.layers.Layer):
         self.layers.append(  tf.keras.layers.Conv2D(1024, (4,4), strides=(1,1), padding='valid', kernel_initializer=init) )
         self.layers.append(  tf.keras.layers.LeakyReLU(alpha=0.2) )
 
-        self.z_mean_l  = tf.keras.layers.Conv2D(1024, (1,1), strides=(1,1), padding='valid', kernel_initializer=init)
-        self.z_log_var_l = tf.keras.layers.Conv2D(1024, (1,1), strides=(1,1), padding='valid', kernel_initializer=init)
+        self.z_mean_l  = tf.keras.layers.Dense(1024, kernel_initializer=init)
+        self.z_log_var_l = tf.keras.layers.Dense(1024, kernel_initializer=init)
         self.to_32=tf.keras.layers.Activation("linear" , dtype='float32')
         # 1,1,1024       
         # self.layers.append(  tf.keras.layers.Conv2D(1024, (1,1), strides=(1,1), padding='valid', kernel_initializer=init) )
