@@ -68,7 +68,7 @@ def run_tensorflow():
 
     optims = [
         mixed_precision.LossScaleOptimizer(
-            tf.keras.optimizers.Adam(1e-3), loss_scale="dynamic"
+            tf.keras.optimizers.Adam(1e-4, beta_1=0.9, beta_2=0.99), loss_scale="dynamic"
         )
         for _ in range(8)
     ]
@@ -214,8 +214,8 @@ def run_tensorflow():
             loss_semantic_consistency,
             loss_gan,
             loss_disc,
-            disc_fake,
-            disc_real
+            tf.reduce_mean(disc_fake),
+            tf.reduce_mean(disc_real)
         )
 
     def process_data_for_display(input_image):
