@@ -102,8 +102,12 @@ class W_Discriminator(tf.keras.layers.Layer):
             self.layers.append(  tf.keras.layers.LeakyReLU(alpha=0.2) )
             i //=2
             mult *= 2
-        self.layers.append(  tf.keras.layers.Conv2D(16 * mult, (4,4), strides=(2,2), padding='same', kernel_initializer=init))
-        self.layers.append( tf.keras.layers.Conv2D(1, (4,4), padding='valid', kernel_initializer=init)) 
+        # self.layers.append(  tf.keras.layers.Conv2D(16 * mult, (4,4), strides=(2,2), padding='same', kernel_initializer=init))
+        # self.layers.append(  tf.keras.layers.LeakyReLU(alpha=0.2) )
+        self.layers.append( tf.keras.layers.Reshape((1,4096)) )
+        self.layers.append( tf.keras.layers.Dense(256, kernel_initializer=init)) 
+        self.layers.append(  tf.keras.layers.LeakyReLU(alpha=0.2) )
+        self.layers.append( tf.keras.layers.Dense(1, kernel_initializer=init)) 
         self.layers.append(tf.keras.layers.Activation("linear" , dtype='float32') )
 
     def call(self, inputs):
